@@ -37,6 +37,7 @@ public class AuthorizationCodeDto {
     private String subjectIdentifier;
     private String pkceCodeChallenge;
     private String pkceCodeChallengeMethod;
+    private String authorizationCodeHash;
 
     public String getCodeId() {
         return codeId;
@@ -156,5 +157,15 @@ public class AuthorizationCodeDto {
 
     public void setPkceCodeChallengeMethod(String pkceCodeChallengeMethod) {
         this.pkceCodeChallengeMethod = pkceCodeChallengeMethod;
+    }
+
+    public String getAuthorizationCodeHash() {
+
+        return authorizationCodeHash;
+    }
+
+    public void setAuthorizationCodeHash(String authorizationCodeHash) {
+
+        this.authorizationCodeHash = authorizationCodeHash;
     }
 }

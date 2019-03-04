@@ -19,12 +19,16 @@
 package org.wso2.carbon.migration.dbsync;
 
 import org.apache.log4j.PropertyConfigurator;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wso2.carbon.migration.dbsync.dto.AccessTokenDto;
 import org.wso2.carbon.migration.dbsync.dto.AuthorizationCodeDto;
 import org.wso2.carbon.migration.dbsync.dto.TokenScopeDto;
 
+import java.security.KeyStore;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -46,23 +50,39 @@ public class DBSynchronizer {
     private static String destDBPass;
     private static String destDBDriver;
 
+    private static String keystorePath;
+    private static String keystorePass;
+    private static String keyAlias;
+    private static String keyPass;
+
+    private static boolean isEncryptionEnabled;
+
+    public static final String ALGORITHM_ATTR_NAME = "algorithm";
+    public static final String HASH_ATTR_NAME = "hash";
+
     public static void main(String[] args) {
 
         PropertyConfigurator.configure("log4j.properties");
         logger.info("Starting database sync operation");
 
-        sourceDBUrl = args[4];
-        sourceDBUser = args[5];
-        sourceDBPass = args[6];
-        sourceDBDriver = args[7];
+        sourceDBUrl = args[0];
+        sourceDBUser = args[1];
+        sourceDBPass = args[2];
+        sourceDBDriver = args[3];
 
-        destDBUrl = args[8];
-        destDBUser = args[9];
-        destDBPass = args[10];
-        destDBDriver = args[11];
+        destDBUrl = args[4];
+        destDBUser = args[5];
+        destDBPass = args[6];
+        destDBDriver = args[7];
+
+        isEncryptionEnabled = Boolean.parseBoolean(args[8]);
+
+        keystorePath = args[9];
+        keystorePass = args[10];
+        keyAlias = args[11];
+        keyPass = args[12];
 
         try {
-
             DBSynchronizer dbSynchronizer = new DBSynchronizer();
 
             ArrayList<AccessTokenDto> accessTokenDtos = dbSynchronizer.readTokenInfo();
@@ -83,7 +103,7 @@ public class DBSynchronizer {
 
     }
 
-    private ArrayList<AccessTokenDto> readTokenInfo() {
+    private ArrayList<AccessTokenDto> readTokenInfo() throws Exception {
 
         ArrayList<AccessTokenDto> accessTokenDtos = new ArrayList<AccessTokenDto>();
         Connection conn = null;
@@ -117,10 +137,14 @@ public class DBSynchronizer {
                 accessTokenDto.setTokenState(rs.getString("TOKEN_STATE"));
                 accessTokenDto.setTokenStateId(rs.getString("TOKEN_STATE_ID"));
                 accessTokenDto.setSubjectIdentifier(rs.getString("SUBJECT_IDENTIFIER"));
+                accessTokenDto.setAccessTokenHash(hash(rs.getString("ACCESS_TOKEN")));
+                accessTokenDto.setRefreshTokenHash(hash(rs.getString("REFRESH_TOKEN")));
                 accessTokenDtos.add(accessTokenDto);
             }
         } catch (SQLException e) {
             logger.error("SQL Exception occurred", e);
+        } catch (NoSuchAlgorithmException e) {
+            logger.error("NoSuchAlgorithmException occurred while hashing", e);
         } catch (ClassNotFoundException e) {
             logger.error("Database Driver not found", e);
         } finally {
@@ -149,11 +173,13 @@ public class DBSynchronizer {
         String insertQuery = "INSERT INTO IDN_OAUTH2_ACCESS_TOKEN (TOKEN_ID,ACCESS_TOKEN,REFRESH_TOKEN," +
                 "CONSUMER_KEY_ID,AUTHZ_USER,TENANT_ID,USER_DOMAIN,USER_TYPE,GRANT_TYPE,TIME_CREATED," +
                 "    REFRESH_TOKEN_TIME_CREATED,VALIDITY_PERIOD,REFRESH_TOKEN_VALIDITY_PERIOD,TOKEN_SCOPE_HASH," +
-                "TOKEN_STATE,TOKEN_STATE_ID,SUBJECT_IDENTIFIER) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)" +
+                "TOKEN_STATE,TOKEN_STATE_ID,SUBJECT_IDENTIFIER,ACCESS_TOKEN_HASH,REFRESH_TOKEN_HASH) VALUES (?,?,?,?,?,?,?,?,?,?,?,?," +
+                "?,?,?,?,?,?,?)" +
                 "    ON DUPLICATE KEY UPDATE ACCESS_TOKEN = ?,REFRESH_TOKEN = ?, CONSUMER_KEY_ID = ?, AUTHZ_USER = ?," +
                 " TENANT_ID = ?, USER_DOMAIN = ?, USER_TYPE = ?,GRANT_TYPE = ?, TIME_CREATED = ?," +
                 "     REFRESH_TOKEN_TIME_CREATED = ?, VALIDITY_PERIOD = ?, REFRESH_TOKEN_VALIDITY_PERIOD = ?, " +
-                "TOKEN_SCOPE_HASH = ?, TOKEN_STATE = ?, TOKEN_STATE_ID = ?, SUBJECT_IDENTIFIER = ?;";
+                "TOKEN_SCOPE_HASH = ?, TOKEN_STATE = ?, TOKEN_STATE_ID = ?, SUBJECT_IDENTIFIER = ?, ACCESS_TOKEN_HASH" +
+                " = ?, REFRESH_TOKEN_HASH = ?;";
         Connection conn = null;
         try {
             Class.forName(destDBDriver);
@@ -178,23 +204,27 @@ public class DBSynchronizer {
                 insertStatement.setString(15, accessTokenDto.getTokenState());
                 insertStatement.setString(16, accessTokenDto.getTokenStateId());
                 insertStatement.setString(17, accessTokenDto.getSubjectIdentifier());
+                insertStatement.setString(18, accessTokenDto.getAccessTokenHash());
+                insertStatement.setString(19, accessTokenDto.getRefreshTokenHash());
 
-                insertStatement.setString(18, accessTokenDto.getAccessToken());
-                insertStatement.setString(19, accessTokenDto.getRefreshToken());
-                insertStatement.setInt(20, accessTokenDto.getConsumerKeyId());
-                insertStatement.setString(21, accessTokenDto.getAuthzUser());
-                insertStatement.setInt(22, accessTokenDto.getTenantId());
-                insertStatement.setString(23, accessTokenDto.getUserDomain());
-                insertStatement.setString(24, accessTokenDto.getUserType());
-                insertStatement.setString(25, accessTokenDto.getGrantType());
-                insertStatement.setTimestamp(26, accessTokenDto.getTimeCreated());
-                insertStatement.setTimestamp(27, accessTokenDto.getRefreshTokenTimeCreated());
-                insertStatement.setLong(28, accessTokenDto.getValidityPeriod());
-                insertStatement.setLong(29, accessTokenDto.getRefreshTokenValidityPeriod());
-                insertStatement.setString(30, accessTokenDto.getTokenScopeHash());
-                insertStatement.setString(31, accessTokenDto.getTokenState());
-                insertStatement.setString(32, accessTokenDto.getTokenStateId());
-                insertStatement.setString(33, accessTokenDto.getSubjectIdentifier());
+                insertStatement.setString(20, accessTokenDto.getAccessToken());
+                insertStatement.setString(21, accessTokenDto.getRefreshToken());
+                insertStatement.setInt(22, accessTokenDto.getConsumerKeyId());
+                insertStatement.setString(23, accessTokenDto.getAuthzUser());
+                insertStatement.setInt(24, accessTokenDto.getTenantId());
+                insertStatement.setString(25, accessTokenDto.getUserDomain());
+                insertStatement.setString(26, accessTokenDto.getUserType());
+                insertStatement.setString(27, accessTokenDto.getGrantType());
+                insertStatement.setTimestamp(28, accessTokenDto.getTimeCreated());
+                insertStatement.setTimestamp(29, accessTokenDto.getRefreshTokenTimeCreated());
+                insertStatement.setLong(30, accessTokenDto.getValidityPeriod());
+                insertStatement.setLong(31, accessTokenDto.getRefreshTokenValidityPeriod());
+                insertStatement.setString(32, accessTokenDto.getTokenScopeHash());
+                insertStatement.setString(33, accessTokenDto.getTokenState());
+                insertStatement.setString(34, accessTokenDto.getTokenStateId());
+                insertStatement.setString(35, accessTokenDto.getSubjectIdentifier());
+                insertStatement.setString(36, accessTokenDto.getAccessTokenHash());
+                insertStatement.setString(37, accessTokenDto.getRefreshTokenHash());
 
                 if (logger.isDebugEnabled()) {
                     logger.debug("Adding record to IDN_OAUTH2_ACCESS_TOKEN for the TOKEN ID: " + accessTokenDto.getTokenId());
@@ -321,7 +351,7 @@ public class DBSynchronizer {
         }
     }
 
-    private ArrayList<AuthorizationCodeDto> readAuthCodes() {
+    private ArrayList<AuthorizationCodeDto> readAuthCodes() throws Exception {
 
         ArrayList<AuthorizationCodeDto> authorizationCodeDtos = new ArrayList<AuthorizationCodeDto>();
         Connection conn = null;
@@ -354,12 +384,15 @@ public class DBSynchronizer {
                 authzCodeDto.setSubjectIdentifier(rs.getString("SUBJECT_IDENTIFIER"));
                 authzCodeDto.setPkceCodeChallenge(rs.getString("PKCE_CODE_CHALLENGE"));
                 authzCodeDto.setPkceCodeChallengeMethod(rs.getString("PKCE_CODE_CHALLENGE_METHOD"));
+                authzCodeDto.setAuthorizationCodeHash(hash(rs.getString("AUTHORIZATION_CODE")));
                 authorizationCodeDtos.add(authzCodeDto);
             }
             readStatement.close();
             conn.close();
         } catch (SQLException e) {
             logger.error("SQL Exception occurred", e);
+        } catch (NoSuchAlgorithmException e) {
+            logger.error("NoSuchAlgorithmException occurred while hashing", e);
         } catch (ClassNotFoundException e) {
             logger.error("Database Driver not found", e);
         } finally {
@@ -387,13 +420,13 @@ public class DBSynchronizer {
         PreparedStatement insertStatement = null;
         String insertQuery = "insert into IDN_OAUTH2_AUTHORIZATION_CODE (CODE_ID,AUTHORIZATION_CODE," +
                 "CONSUMER_KEY_ID,CALLBACK_URL,SCOPE,AUTHZ_USER,TENANT_ID,USER_DOMAIN,TIME_CREATED,VALIDITY_PERIOD,STATE," +
-                "    TOKEN_ID,SUBJECT_IDENTIFIER,PKCE_CODE_CHALLENGE,PKCE_CODE_CHALLENGE_METHOD) values" +
-                "    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE AUTHORIZATION_CODE = ?, " +
+                "    TOKEN_ID,SUBJECT_IDENTIFIER,PKCE_CODE_CHALLENGE,PKCE_CODE_CHALLENGE_METHOD,AUTHORIZATION_CODE_HASH) values" +
+                "    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE AUTHORIZATION_CODE = ?, " +
                 "CONSUMER_KEY_ID = ?,CALLBACK_URL =?, SCOPE = ?," +
                 "AUTHZ_USER = ?,TENANT_ID = ?,USER_DOMAIN = ?," +
                 "TIME_CREATED =?,VALIDITY_PERIOD = ?, STATE = ?," +
                 "    TOKEN_ID = ?,SUBJECT_IDENTIFIER = ? ," +
-                "PKCE_CODE_CHALLENGE = ?, PKCE_CODE_CHALLENGE_METHOD = ?;";
+                "PKCE_CODE_CHALLENGE = ?, PKCE_CODE_CHALLENGE_METHOD = ?, AUTHORIZATION_CODE_HASH = ?;";
 
         Connection conn = null;
         try {
@@ -417,21 +450,23 @@ public class DBSynchronizer {
                 insertStatement.setString(13, authzCodeDto.getSubjectIdentifier());
                 insertStatement.setString(14, authzCodeDto.getPkceCodeChallenge());
                 insertStatement.setString(15, authzCodeDto.getPkceCodeChallengeMethod());
+                insertStatement.setString(16, authzCodeDto.getAuthorizationCodeHash());
 
-                insertStatement.setString(16, authzCodeDto.getAuthorizationCode());
-                insertStatement.setInt(17, authzCodeDto.getConsumerKeyId());
-                insertStatement.setString(18, authzCodeDto.getCallbackUrl());
-                insertStatement.setString(19, authzCodeDto.getScope());
-                insertStatement.setString(20, authzCodeDto.getAuthzUser());
-                insertStatement.setInt(21, authzCodeDto.getTenantId());
-                insertStatement.setString(22, authzCodeDto.getUserDomain());
-                insertStatement.setTimestamp(23, authzCodeDto.getTimeCreated());
-                insertStatement.setLong(24, authzCodeDto.getValidityPeriod());
-                insertStatement.setString(25, authzCodeDto.getState());
-                insertStatement.setString(26, authzCodeDto.getTokenId());
-                insertStatement.setString(27, authzCodeDto.getSubjectIdentifier());
-                insertStatement.setString(28, authzCodeDto.getPkceCodeChallenge());
-                insertStatement.setString(29, authzCodeDto.getPkceCodeChallengeMethod());
+                insertStatement.setString(17, authzCodeDto.getAuthorizationCode());
+                insertStatement.setInt(18, authzCodeDto.getConsumerKeyId());
+                insertStatement.setString(19, authzCodeDto.getCallbackUrl());
+                insertStatement.setString(20, authzCodeDto.getScope());
+                insertStatement.setString(21, authzCodeDto.getAuthzUser());
+                insertStatement.setInt(22, authzCodeDto.getTenantId());
+                insertStatement.setString(23, authzCodeDto.getUserDomain());
+                insertStatement.setTimestamp(24, authzCodeDto.getTimeCreated());
+                insertStatement.setLong(25, authzCodeDto.getValidityPeriod());
+                insertStatement.setString(26, authzCodeDto.getState());
+                insertStatement.setString(27, authzCodeDto.getTokenId());
+                insertStatement.setString(28, authzCodeDto.getSubjectIdentifier());
+                insertStatement.setString(29, authzCodeDto.getPkceCodeChallenge());
+                insertStatement.setString(30, authzCodeDto.getPkceCodeChallengeMethod());
+                insertStatement.setString(31, authzCodeDto.getAuthorizationCodeHash());
 
                 logger.debug("Adding record to IDN_OAUTH2_AUTHORIZATION_CODE with CODE ID: " + authzCodeDto.getCodeId());
                 insertStatement.addBatch();
@@ -462,5 +497,42 @@ public class DBSynchronizer {
                 logger.error("Connection close error", e);
             }
         }
+    }
+
+    /**
+     * Method to generate hash value
+     *
+     * @param text
+     * @return hashed value
+     */
+    private String hash(String text) throws Exception {
+
+        String hashingText;
+        if (isEncryptionEnabled) {
+            KeyStore keyStore = CryptoUtil.getKeyStore(keystorePath, keystorePass);
+            hashingText  = CryptoUtil.decrypt(text, keyStore, keyAlias, keyPass);
+        } else {
+            hashingText = text;
+        }
+        MessageDigest messageDigest = null;
+        byte[] hash = null;
+        String hashAlgorithm = "SHA-256";
+        messageDigest = MessageDigest.getInstance(hashAlgorithm);
+        messageDigest.update(hashingText.getBytes());
+        hash = messageDigest.digest();
+
+        JSONObject object = new JSONObject();
+        object.put(ALGORITHM_ATTR_NAME, hashAlgorithm);
+        object.put(HASH_ATTR_NAME, bytesToHex(hash));
+        return object.toString();
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+
+        StringBuilder result = new StringBuilder();
+        for (byte byt : bytes) {
+            result.append(Integer.toString((byt & 0xff) + 0x100, 16).substring(1));
+        }
+        return result.toString();
     }
 }

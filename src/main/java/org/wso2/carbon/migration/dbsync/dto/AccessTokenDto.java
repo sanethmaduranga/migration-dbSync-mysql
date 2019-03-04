@@ -39,6 +39,8 @@ public class AccessTokenDto {
     private String tokenState;
     private String tokenStateId;
     private String subjectIdentifier;
+    private String accessTokenHash;
+    private String refreshTokenHash;
 
     public String getTokenId() {
         return tokenId;
@@ -174,6 +176,26 @@ public class AccessTokenDto {
 
     public void setSubjectIdentifier(String subjectIdentifier) {
         this.subjectIdentifier = subjectIdentifier;
+    }
+
+    public String getAccessTokenHash() {
+
+        return accessTokenHash;
+    }
+
+    public void setAccessTokenHash(String accessTokenHash) {
+
+        this.accessTokenHash = accessTokenHash;
+    }
+
+    public String getRefreshTokenHash() {
+
+        return refreshTokenHash;
+    }
+
+    public void setRefreshTokenHash(String refreshTokenHash) {
+
+        this.refreshTokenHash = refreshTokenHash;
     }
 }
 

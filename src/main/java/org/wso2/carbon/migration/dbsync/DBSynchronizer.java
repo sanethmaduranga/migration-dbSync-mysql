@@ -118,13 +118,14 @@ public class DBSynchronizer {
         Connection conn1 = null;
         ResultSet rs1 = null;
         PreparedStatement readStatement1 = null;
+        PreparedStatement readStatement2 = null;
         try {
             Class.forName(sourceDBDriver);
             conn = DriverManager.getConnection(sourceDBUrl, sourceDBUser, sourceDBPass);
             String sql = "SELECT TOKEN_ID,ACCESS_TOKEN,REFRESH_TOKEN, CONSUMER_KEY_ID,AUTHZ_USER,TENANT_ID," +
                     "USER_DOMAIN,USER_TYPE,GRANT_TYPE,TIME_CREATED,REFRESH_TOKEN_TIME_CREATED,VALIDITY_PERIOD," +
                     "REFRESH_TOKEN_VALIDITY_PERIOD,TOKEN_SCOPE_HASH,TOKEN_STATE,TOKEN_STATE_ID,SUBJECT_IDENTIFIER FROM " +
-                    "IDN_OAUTH2_ACCESS_TOKEN_SYNC";
+                    "IDN_OAUTH2_ACCESS_TOKEN_SYNC WHERE IS_SYNC = 0";
             readStatement = conn.prepareStatement(sql);
             rs = readStatement.executeQuery();
 
@@ -139,6 +140,12 @@ public class DBSynchronizer {
                     logger.info(sql1);
                     readStatement1 = conn1.prepareStatement(sql1);
                     rs1 = readStatement1.executeQuery();
+
+                    String sql2 = "UPDATE IDN_OAUTH2_ACCESS_TOKEN_SYNC SET IS_SYNC = 1 WHERE TOKEN_ID = '" +
+                            rs.getString("TOKEN_ID") + "'" ;
+                    logger.info(sql2);
+                    readStatement2 = conn.prepareStatement(sql2);
+                    readStatement2.executeUpdate();
 
                     if ( rs1.next() == true ) {
                         continue;
@@ -177,14 +184,19 @@ public class DBSynchronizer {
                         if (rs1 != null) {
                             rs1.close();
                         }
-                        if (readStatement1 != null)
+                        if (readStatement1 != null) {
                             readStatement1.close();
+                        }
+                        if (readStatement2 != null) {
+                            readStatement2.close();
+                        }
                     } catch (SQLException e) {
                         logger.error("SQL Exception occurred when closing statement", e);
                     }
                     try {
-                        if (conn1 != null)
+                        if (conn1 != null) {
                             conn1.close();
+                        }
                     } catch (SQLException e) {
                         logger.error("Connection close error", e);
                     }
@@ -328,20 +340,70 @@ public class DBSynchronizer {
         Connection conn = null;
         ResultSet rs = null;
         PreparedStatement readStatement = null;
+        PreparedStatement readStatement2 = null;
         try {
             Class.forName(sourceDBDriver);
             conn = DriverManager.getConnection(sourceDBUrl, sourceDBUser, sourceDBPass);
             String sql;
-            sql = "SELECT TOKEN_ID,TOKEN_SCOPE,TENANT_ID FROM IDN_OAUTH2_ACCESS_TOKEN_SCOPE_SYNC";
+            sql = "SELECT TOKEN_ID,TOKEN_SCOPE,TENANT_ID FROM IDN_OAUTH2_ACCESS_TOKEN_SCOPE_SYNC WHERE IS_SYNC = 0";
             readStatement = conn.prepareStatement(sql);
             rs = readStatement.executeQuery();
+            Connection conn1 = null;
+            ResultSet rs1 = null;
+            PreparedStatement readStatement1 = null;
 
             while (rs.next()) {
-                TokenScopeDto tokenScopeDto = new TokenScopeDto();
-                tokenScopeDto.setTokenId(rs.getString("TOKEN_ID"));
-                tokenScopeDto.setTokenScope(rs.getString("TOKEN_SCOPE"));
-                tokenScopeDto.setTenantId(rs.getInt("TENANT_ID"));
-                tokenScopeDtos.add(tokenScopeDto);
+                try {
+                    Class.forName(destDBDriver);
+                    conn1 = DriverManager.getConnection(destDBUrl, destDBUser, destDBPass);
+                    String sql1 = "SELECT TOKEN_ID FROM IDN_OAUTH2_ACCESS_TOKEN WHERE TOKEN_ID=" + "'" +
+                            rs.getString("TOKEN_ID") + "'";
+                    logger.info(sql1);
+                    readStatement1 = conn1.prepareStatement(sql1);
+                    rs1 = readStatement1.executeQuery();
+
+                    String sql2 = "UPDATE IDN_OAUTH2_ACCESS_TOKEN_SCOPE_SYNC SET IS_SYNC = 1 WHERE TOKEN_ID = '" +
+                            rs.getString("TOKEN_ID") + "' AND TOKEN_SCOPE = '" +
+                            rs.getString("TOKEN_SCOPE") + "' AND TENANT_ID = " +
+                            rs.getInt("TENANT_ID");
+                    logger.info(sql2);
+                    readStatement2 = conn.prepareStatement(sql2);
+                    readStatement2.executeUpdate();
+
+                    if (rs1.next() == false) {
+                        continue;
+                    } else {
+                        TokenScopeDto tokenScopeDto = new TokenScopeDto();
+                        tokenScopeDto.setTokenId(rs.getString("TOKEN_ID"));
+                        tokenScopeDto.setTokenScope(rs.getString("TOKEN_SCOPE"));
+                        tokenScopeDto.setTenantId(rs.getInt("TENANT_ID"));
+                        tokenScopeDtos.add(tokenScopeDto);
+                    }
+                } catch (SQLException e) {
+                    logger.error("SQL Exception occurred", e);
+                } catch (ClassNotFoundException e) {
+                    logger.error("Database Driver not found", e);
+                } finally {
+                    try {
+                        if (rs1 != null) {
+                            rs1.close();
+                        }
+                        if (readStatement1 != null) {
+                            readStatement1.close();
+                        }
+                        if (readStatement2 != null) {
+                            readStatement2.close();
+                        }
+                    } catch (SQLException e) {
+                        logger.error("SQL Exception occurred when closing statement", e);
+                    }
+                    try {
+                        if (conn1 != null)
+                            conn1.close();
+                    } catch (SQLException e) {
+                        logger.error("Connection close error", e);
+                    }
+                }
             }
         } catch (SQLException e) {
             logger.error("SQL Exception occurred", e);

@@ -1,21 +1,21 @@
 #!/bin/sh
 
-sourceDBUrl="jdbc:mysql://localhost:3306/QANTAS_AM_01?autoReconnect=true&amp;useSSL=false"
-sourceDBUser="root"
-sourceDBPass="wso2123"
+sourceDBUrl="<DB-conection_URL>" #The Connection URL of the APIM_2.1.0
+sourceDBUser="<DB-Username>"
+sourceDBPass="<Password>"
 sourceDBDriver="com.mysql.jdbc.Driver"
 
-destDBUrl="jdbc:mysql://localhost:3306/QANTAS_AM?autoReconnect=true&amp;useSSL=false"
-destDBUser="root"
-destDBPass="wso2123"
+destDBUrl="<DB-conection_URL>" #The Connection URL of the APIM_2.6.0
+destDBUser="<DB-Username>"
+destDBPass="<Password>"
 destDBDriver="com.mysql.jdbc.Driver"
 
-isEncryptionEnabled=true
+isEncryptionEnabled=false #Check whether the encryption is enabled in the source environment(APIM-2.1.0)
 
-keystorePath="/home/saneth/Documents/SUPPORT/APIM/QANTASSUB-86/green_pack/wso2am-2.6.0/repository/resources/security/wso2carbon.jks"
-keystorePass="wso2carbon"
-keyAlias="wso2carbon"
-keyPass="wso2carbon"
+keystorePath="<APIM_2.6.0_HOME>/repository/resources/security/wso2carbon.jks" #The fully qualified path of the key-store
+keystorePass="<password>"
+keyAlias="<Alias>"
+keyPass="<Key-password>"
 
 java -jar org.wso2.carbon.migration.dbsync-1.0.0-jar-with-dependencies.jar \
 $sourceDBUrl  $sourceDBUser  $sourceDBPass  $sourceDBDriver  $destDBUrl  $destDBUser  $destDBPass  $destDBDriver  \

@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.wso2.carbon.migration.dbsync.dto.AccessTokenDto;
 import org.wso2.carbon.migration.dbsync.dto.AuthorizationCodeDto;
+import org.wso2.carbon.migration.dbsync.dto.KeystoreDto;
 import org.wso2.carbon.migration.dbsync.dto.TokenScopeDto;
 
 import java.security.KeyStore;
@@ -82,21 +83,26 @@ public class DBSynchronizer {
         keyAlias = args[11];
         keyPass = args[12];
 
+        KeyStore keyStore = null;
         try {
-            DBSynchronizer dbSynchronizer = new DBSynchronizer();
+            keyStore = CryptoUtil.getKeyStore(keystorePath, keystorePass);
 
-            ArrayList<AccessTokenDto> accessTokenDtos = dbSynchronizer.readTokenInfo();
-            logger.info("No of IDN_OAUTH2_ACCESS_TOKEN records to be merged: " + accessTokenDtos.size());
-            dbSynchronizer.writeTokenInfo(accessTokenDtos);
+            if (keyStore != null) {
+                KeystoreDto keystoreDto = new KeystoreDto(keyStore, keystorePass, keyAlias, keyPass);
+                DBSynchronizer dbSynchronizer = new DBSynchronizer();
 
-            ArrayList<TokenScopeDto> tokenScopeDtos = dbSynchronizer.readTokenScope();
-            logger.info("No of IDN_OAUTH2_ACCESS_TOKEN_SCOPE records to be merged: " + tokenScopeDtos.size());
-            dbSynchronizer.writeTokenScope(tokenScopeDtos);
+                ArrayList<AccessTokenDto> accessTokenDtos = dbSynchronizer.readTokenInfo();
+                logger.info("No of IDN_OAUTH2_ACCESS_TOKEN records to be merged: " + accessTokenDtos.size());
+                dbSynchronizer.writeTokenInfo(accessTokenDtos, keystoreDto);
 
-            ArrayList<AuthorizationCodeDto> authorizationCodeDtos = dbSynchronizer.readAuthCodes();
-            logger.info("No of IDN_OAUTH2_AUTHORIZATION_CODE records to be merged: " + authorizationCodeDtos.size());
-            dbSynchronizer.writeAuthCodes(authorizationCodeDtos);
+                ArrayList<TokenScopeDto> tokenScopeDtos = dbSynchronizer.readTokenScope();
+                logger.info("No of IDN_OAUTH2_ACCESS_TOKEN_SCOPE records to be merged: " + tokenScopeDtos.size());
+                dbSynchronizer.writeTokenScope(tokenScopeDtos);
 
+                ArrayList<AuthorizationCodeDto> authorizationCodeDtos = dbSynchronizer.readAuthCodes();
+                logger.info("No of IDN_OAUTH2_AUTHORIZATION_CODE records to be merged: " + authorizationCodeDtos.size());
+                dbSynchronizer.writeAuthCodes(authorizationCodeDtos, keystoreDto);
+            }
         } catch (Exception e) {
             logger.error("Error occurred while running the db sync tool", e);
         }
@@ -118,6 +124,8 @@ public class DBSynchronizer {
                     "IDN_OAUTH2_ACCESS_TOKEN_SYNC";
             readStatement = conn.prepareStatement(sql);
             rs = readStatement.executeQuery();
+
+
             while (rs.next()) {
                 AccessTokenDto accessTokenDto = new AccessTokenDto();
                 accessTokenDto.setTokenId(rs.getString("TOKEN_ID"));
@@ -167,7 +175,7 @@ public class DBSynchronizer {
         return accessTokenDtos;
     }
 
-    private void writeTokenInfo(ArrayList<AccessTokenDto> accessTokenDtos) throws SQLException {
+    private void writeTokenInfo(ArrayList<AccessTokenDto> accessTokenDtos, KeystoreDto keystoreDto) throws SQLException {
 
         PreparedStatement insertStatement = null;
         String insertQuery = "INSERT INTO IDN_OAUTH2_ACCESS_TOKEN (TOKEN_ID,ACCESS_TOKEN,REFRESH_TOKEN," +
@@ -187,9 +195,17 @@ public class DBSynchronizer {
             conn.setAutoCommit(false);
             insertStatement = conn.prepareStatement(insertQuery);
             for (AccessTokenDto accessTokenDto : accessTokenDtos) {
+
                 insertStatement.setString(1, accessTokenDto.getTokenId());
-                insertStatement.setString(2, accessTokenDto.getAccessToken());
-                insertStatement.setString(3, accessTokenDto.getRefreshToken());
+                if (isEncryptionEnabled) {
+                    insertStatement.setString(2, accessTokenDto.getAccessToken());
+                    insertStatement.setString(3, accessTokenDto.getRefreshToken());
+                } else {
+                    insertStatement.setString(2, CryptoUtil.encrypt(accessTokenDto.getAccessToken(), keystoreDto.getKeyStore(),
+                            keystoreDto.getKeyAlias()));
+                    insertStatement.setString(3, CryptoUtil.encrypt(accessTokenDto.getRefreshToken(), keystoreDto.getKeyStore(),
+                            keystoreDto.getKeyAlias()));
+                }
                 insertStatement.setInt(4, accessTokenDto.getConsumerKeyId());
                 insertStatement.setString(5, accessTokenDto.getAuthzUser());
                 insertStatement.setInt(6, accessTokenDto.getTenantId());
@@ -207,8 +223,15 @@ public class DBSynchronizer {
                 insertStatement.setString(18, accessTokenDto.getAccessTokenHash());
                 insertStatement.setString(19, accessTokenDto.getRefreshTokenHash());
 
-                insertStatement.setString(20, accessTokenDto.getAccessToken());
-                insertStatement.setString(21, accessTokenDto.getRefreshToken());
+                if (isEncryptionEnabled) {
+                    insertStatement.setString(20, accessTokenDto.getAccessToken());
+                    insertStatement.setString(21, accessTokenDto.getRefreshToken());
+                } else {
+                    insertStatement.setString(20, CryptoUtil.encrypt(accessTokenDto.getAccessToken(), keystoreDto.getKeyStore(),
+                            keystoreDto.getKeyAlias()));
+                    insertStatement.setString(21, CryptoUtil.encrypt(accessTokenDto.getRefreshToken(), keystoreDto.getKeyStore(),
+                            keystoreDto.getKeyAlias()));
+                }
                 insertStatement.setInt(22, accessTokenDto.getConsumerKeyId());
                 insertStatement.setString(23, accessTokenDto.getAuthzUser());
                 insertStatement.setInt(24, accessTokenDto.getTenantId());
@@ -415,7 +438,7 @@ public class DBSynchronizer {
         return authorizationCodeDtos;
     }
 
-    private void writeAuthCodes(ArrayList<AuthorizationCodeDto> authorizationCodeDtos) throws SQLException {
+    private void writeAuthCodes(ArrayList<AuthorizationCodeDto> authorizationCodeDtos, KeystoreDto keystoreDto) throws SQLException {
 
         PreparedStatement insertStatement = null;
         String insertQuery = "insert into IDN_OAUTH2_AUTHORIZATION_CODE (CODE_ID,AUTHORIZATION_CODE," +
@@ -436,7 +459,12 @@ public class DBSynchronizer {
             insertStatement = conn.prepareStatement(insertQuery);
             for (AuthorizationCodeDto authzCodeDto : authorizationCodeDtos) {
                 insertStatement.setString(1, authzCodeDto.getCodeId());
-                insertStatement.setString(2, authzCodeDto.getAuthorizationCode());
+                if (isEncryptionEnabled) {
+                    insertStatement.setString(2, authzCodeDto.getAuthorizationCode());
+                } else {
+                    insertStatement.setString(2, CryptoUtil.encrypt(authzCodeDto.getAuthorizationCode(), keystoreDto.getKeyStore(),
+                            keystoreDto.getKeyAlias()));
+                }
                 insertStatement.setInt(3, authzCodeDto.getConsumerKeyId());
                 insertStatement.setString(4, authzCodeDto.getCallbackUrl());
                 insertStatement.setString(5, authzCodeDto.getScope());
@@ -452,7 +480,12 @@ public class DBSynchronizer {
                 insertStatement.setString(15, authzCodeDto.getPkceCodeChallengeMethod());
                 insertStatement.setString(16, authzCodeDto.getAuthorizationCodeHash());
 
-                insertStatement.setString(17, authzCodeDto.getAuthorizationCode());
+                if (isEncryptionEnabled) {
+                    insertStatement.setString(17, authzCodeDto.getAuthorizationCode());
+                } else {
+                    insertStatement.setString(17, CryptoUtil.encrypt(authzCodeDto.getAuthorizationCode(), keystoreDto.getKeyStore(),
+                            keystoreDto.getKeyAlias()));
+                }
                 insertStatement.setInt(18, authzCodeDto.getConsumerKeyId());
                 insertStatement.setString(19, authzCodeDto.getCallbackUrl());
                 insertStatement.setString(20, authzCodeDto.getScope());

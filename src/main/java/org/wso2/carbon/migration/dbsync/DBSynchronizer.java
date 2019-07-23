@@ -115,6 +115,9 @@ public class DBSynchronizer {
         Connection conn = null;
         ResultSet rs = null;
         PreparedStatement readStatement = null;
+        Connection conn1 = null;
+        ResultSet rs1 = null;
+        PreparedStatement readStatement1 = null;
         try {
             Class.forName(sourceDBDriver);
             conn = DriverManager.getConnection(sourceDBUrl, sourceDBUser, sourceDBPass);
@@ -125,29 +128,67 @@ public class DBSynchronizer {
             readStatement = conn.prepareStatement(sql);
             rs = readStatement.executeQuery();
 
-
             while (rs.next()) {
-                AccessTokenDto accessTokenDto = new AccessTokenDto();
-                accessTokenDto.setTokenId(rs.getString("TOKEN_ID"));
-                accessTokenDto.setAccessToken(rs.getString("ACCESS_TOKEN"));
-                accessTokenDto.setRefreshToken(rs.getString("REFRESH_TOKEN"));
-                accessTokenDto.setConsumerKeyId(rs.getInt("CONSUMER_KEY_ID"));
-                accessTokenDto.setAuthzUser(rs.getString("AUTHZ_USER"));
-                accessTokenDto.setTenantId(rs.getInt("TENANT_ID"));
-                accessTokenDto.setUserDomain(rs.getString("USER_DOMAIN"));
-                accessTokenDto.setUserType(rs.getString("USER_TYPE"));
-                accessTokenDto.setGrantType(rs.getString("GRANT_TYPE"));
-                accessTokenDto.setTimeCreated(rs.getTimestamp("TIME_CREATED"));
-                accessTokenDto.setRefreshTokenTimeCreated(rs.getTimestamp("REFRESH_TOKEN_TIME_CREATED"));
-                accessTokenDto.setValidityPeriod(rs.getLong("VALIDITY_PERIOD"));
-                accessTokenDto.setRefreshTokenValidityPeriod(rs.getLong("REFRESH_TOKEN_VALIDITY_PERIOD"));
-                accessTokenDto.setTokenScopeHash(rs.getString("TOKEN_SCOPE_HASH"));
-                accessTokenDto.setTokenState(rs.getString("TOKEN_STATE"));
-                accessTokenDto.setTokenStateId(rs.getString("TOKEN_STATE_ID"));
-                accessTokenDto.setSubjectIdentifier(rs.getString("SUBJECT_IDENTIFIER"));
-                accessTokenDto.setAccessTokenHash(hash(rs.getString("ACCESS_TOKEN")));
-                accessTokenDto.setRefreshTokenHash(hash(rs.getString("REFRESH_TOKEN")));
-                accessTokenDtos.add(accessTokenDto);
+                try {
+                    Class.forName(destDBDriver);
+                    conn1 = DriverManager.getConnection(destDBUrl, destDBUser, destDBPass);
+                    String sql1 = "SELECT TOKEN_ID FROM IDN_OAUTH2_ACCESS_TOKEN WHERE CONSUMER_KEY_ID=" + "'" +
+                            rs.getInt("CONSUMER_KEY_ID") + "'" + " AND TOKEN_STATE=" + "'" +
+                            rs.getString("TOKEN_STATE") + "'" + " AND TIME_CREATED > " + "'" +
+                            rs.getTimestamp("TIME_CREATED") + "'";
+                    logger.info(sql1);
+                    readStatement1 = conn1.prepareStatement(sql1);
+                    rs1 = readStatement1.executeQuery();
+
+                    if ( rs1.next() == true ) {
+                        continue;
+                    } else {
+
+                        AccessTokenDto accessTokenDto = new AccessTokenDto();
+                        accessTokenDto.setTokenId(rs.getString("TOKEN_ID"));
+                        accessTokenDto.setAccessToken(rs.getString("ACCESS_TOKEN"));
+                        accessTokenDto.setRefreshToken(rs.getString("REFRESH_TOKEN"));
+                        accessTokenDto.setConsumerKeyId(rs.getInt("CONSUMER_KEY_ID"));
+                        accessTokenDto.setAuthzUser(rs.getString("AUTHZ_USER"));
+                        accessTokenDto.setTenantId(rs.getInt("TENANT_ID"));
+                        accessTokenDto.setUserDomain(rs.getString("USER_DOMAIN"));
+                        accessTokenDto.setUserType(rs.getString("USER_TYPE"));
+                        accessTokenDto.setGrantType(rs.getString("GRANT_TYPE"));
+                        accessTokenDto.setTimeCreated(rs.getTimestamp("TIME_CREATED"));
+                        accessTokenDto.setRefreshTokenTimeCreated(rs.getTimestamp("REFRESH_TOKEN_TIME_CREATED"));
+                        accessTokenDto.setValidityPeriod(rs.getLong("VALIDITY_PERIOD"));
+                        accessTokenDto.setRefreshTokenValidityPeriod(rs.getLong("REFRESH_TOKEN_VALIDITY_PERIOD"));
+                        accessTokenDto.setTokenScopeHash(rs.getString("TOKEN_SCOPE_HASH"));
+                        accessTokenDto.setTokenState(rs.getString("TOKEN_STATE"));
+                        accessTokenDto.setTokenStateId(rs.getString("TOKEN_STATE_ID"));
+                        accessTokenDto.setSubjectIdentifier(rs.getString("SUBJECT_IDENTIFIER"));
+                        accessTokenDto.setAccessTokenHash(hash(rs.getString("ACCESS_TOKEN")));
+                        accessTokenDto.setRefreshTokenHash(hash(rs.getString("REFRESH_TOKEN")));
+                        accessTokenDtos.add(accessTokenDto);
+                    }
+                } catch (SQLException e) {
+                    logger.error("SQL Exception occurred", e);
+                } catch (NoSuchAlgorithmException e) {
+                    logger.error("NoSuchAlgorithmException occurred while hashing", e);
+                } catch (ClassNotFoundException e) {
+                    logger.error("Database Driver not found", e);
+                } finally {
+                    try {
+                        if (rs1 != null) {
+                            rs1.close();
+                        }
+                        if (readStatement1 != null)
+                            readStatement1.close();
+                    } catch (SQLException e) {
+                        logger.error("SQL Exception occurred when closing statement", e);
+                    }
+                    try {
+                        if (conn1 != null)
+                            conn1.close();
+                    } catch (SQLException e) {
+                        logger.error("Connection close error", e);
+                    }
+                }
             }
         } catch (SQLException e) {
             logger.error("SQL Exception occurred", e);

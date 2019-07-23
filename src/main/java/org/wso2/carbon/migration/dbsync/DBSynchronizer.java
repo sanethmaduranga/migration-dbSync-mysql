@@ -137,13 +137,13 @@ public class DBSynchronizer {
                             rs.getInt("CONSUMER_KEY_ID") + "'" + " AND TOKEN_STATE=" + "'" +
                             rs.getString("TOKEN_STATE") + "'" + " AND TIME_CREATED > " + "'" +
                             rs.getTimestamp("TIME_CREATED") + "'";
-                    logger.info(sql1);
+//                    logger.info(sql1);
                     readStatement1 = conn1.prepareStatement(sql1);
                     rs1 = readStatement1.executeQuery();
 
                     String sql2 = "UPDATE IDN_OAUTH2_ACCESS_TOKEN_SYNC SET IS_SYNC = 1 WHERE TOKEN_ID = '" +
                             rs.getString("TOKEN_ID") + "'" ;
-                    logger.info(sql2);
+//                    logger.info(sql2);
                     readStatement2 = conn.prepareStatement(sql2);
                     readStatement2.executeUpdate();
 
@@ -358,7 +358,7 @@ public class DBSynchronizer {
                     conn1 = DriverManager.getConnection(destDBUrl, destDBUser, destDBPass);
                     String sql1 = "SELECT TOKEN_ID FROM IDN_OAUTH2_ACCESS_TOKEN WHERE TOKEN_ID=" + "'" +
                             rs.getString("TOKEN_ID") + "'";
-                    logger.info(sql1);
+//                    logger.info(sql1);
                     readStatement1 = conn1.prepareStatement(sql1);
                     rs1 = readStatement1.executeQuery();
 
@@ -366,7 +366,7 @@ public class DBSynchronizer {
                             rs.getString("TOKEN_ID") + "' AND TOKEN_SCOPE = '" +
                             rs.getString("TOKEN_SCOPE") + "' AND TENANT_ID = " +
                             rs.getInt("TENANT_ID");
-                    logger.info(sql2);
+//                    logger.info(sql2);
                     readStatement2 = conn.prepareStatement(sql2);
                     readStatement2.executeUpdate();
 
